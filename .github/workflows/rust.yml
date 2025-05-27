@@ -1,0 +1,80 @@
+name: Cross-Platform Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: clireader
+            asset_name: clireader-linux-x64
+          - os: windows-latest
+            artifact_name: clireader.exe
+            asset_name: clireader-windows-x64.exe
+          - os: macos-latest
+            artifact_name: clireader
+            asset_name: clireader-macos-x64
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: Install Rust toolchain
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        profile: minimal
+        override: true
+    
+    - name: Build release binary
+      uses: actions-rs/cargo@v1
+      with:
+        command: build
+        args: --release
+    
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.asset_name }}
+        path: target/release/${{ matrix.artifact_name }}
+        if-no-files-found: error
+
+  create-release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          clireader-linux-x64/clireader
+          clireader-windows-x64.exe/clireader.exe
+          clireader-macos-x64/clireader
+        token: ${{ secrets.GITHUB_TOKEN }}
